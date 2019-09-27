@@ -10,9 +10,12 @@ setup(
     author_email='brasilico.ivan@gmail.com',
     packages=find_packages(),
     install_requires=[
+        'dominate',
         'Flask',
-        'Flask-wtf',
+        'flask_login',
         'flask_jwt_extended',
+        'PyMongo',
+        'redis'
 
     ],
     setup_requires=['pytest-runner'],
