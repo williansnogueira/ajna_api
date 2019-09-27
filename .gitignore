@@ -1,0 +1,4 @@
+.idea/*
+.eggs/*
+ajna_api.egg-info/*
+api-venv/*
