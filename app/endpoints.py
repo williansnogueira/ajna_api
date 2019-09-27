@@ -2,11 +2,15 @@ import datetime
 from flask import (
     Blueprint, request, current_app, jsonify
 )
+from flask_jwt_extended import jwt_required
 from ajna_commons.utils.sanitiza import mongo_sanitizar
 from integracao import due_mongo
+
 api = Blueprint('api', __name__)
 
+
 @api.route('/api/grid_data', methods=['POST', 'GET'])
+@jwt_required
 def grid_data():
     """Executa uma consulta no banco.
 
@@ -80,6 +84,7 @@ def grid_data():
 
 
 @api.route('/api/dues/update', methods=['POST'])
+@jwt_required
 def dues_update():
     """Recebe um JSON no formato [{_id1: due1}, ..., {_idn: duen}] e grava
 
