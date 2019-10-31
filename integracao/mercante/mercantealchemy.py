@@ -1,12 +1,39 @@
 # coding: utf-8
 from sqlalchemy import create_engine
 from sqlalchemy import BigInteger, Column, CHAR, \
-    DateTime, func, Integer, Index, MetaData, Table, Text
+    DateTime, func, Integer, Index, MetaData, select, \
+    Table, Text, VARCHAR
 from sqlalchemy.dialects.mysql import BIGINT, TIMESTAMP
 
 from ajna_commons.flask.conf import SQL_URI
 
 metadata = MetaData()
+
+# Tabelas auxiliares / log
+ArquivoBaixado = Table(
+    'arquivosbaixados', metadata,
+    Column('ID', Integer, index=True),
+    Column('nome', VARCHAR(50)),
+    Column('filename_date', TIMESTAMP),
+    Column('create_date', TIMESTAMP, server_default=func.current_timestamp())
+)
+
+
+def data_ultimo_arquivo_baixado(engine):
+    with engine.begin() as conn:
+        s = select([func.Max(ArquivoBaixado.c.filename_date)])
+        c = conn.execute(s).fetchone()
+    return c[0]
+
+
+def grava_arquivo_baixado(engine, nome, data):
+    timestamp = data.strftime('%Y-%m-%d %H:%M:%S')
+    with engine.begin() as conn:
+        sql = ArquivoBaixado.insert()
+        return conn.execute(sql,
+                            nome=nome,
+                            filename_date=timestamp)
+
 
 # Tabelas de lista do XML
 t_ConteinerVazio = Table(
@@ -199,7 +226,6 @@ itens = Table(
     Column('last_modified', DateTime, onupdate=func.current_timestamp()),
     Index('itens_chave', 'numeroCEmercante', 'numeroSequencialItemCarga')
 )
-
 
 NCMItem = Table(
     'NCMItem', metadata,

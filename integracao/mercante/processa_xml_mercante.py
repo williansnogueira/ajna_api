@@ -8,14 +8,57 @@ import logging
 import os
 import time
 import pandas as pd
+import requests
 import sqlalchemy
+from datetime import datetime, timedelta
 
 from collections import Counter
 from xml.etree import ElementTree
 
 from ajna_commons.flask.log import logger
 from integracao.mercante import mercante
-from ajnaapi.config import Staging
+# from ajnaapi.config import Staging
+from integracao.mercante.mercantealchemy import data_ultimo_arquivo_baixado, \
+    grava_arquivo_baixado
+
+FORMATO_DATA_ANIITA = '%Y%m%d%H%M%S'
+FORMATO_DATA_ARQUIVO = '%Y-%m-%d-%H-%M-%S'
+URL_ANIITA_LISTA = 'http://10.50.13.17:8443/consultaArquivos'
+URL_ANIITA_DOWNLOAD = 'http://10.50.13.17:8443/download'
+
+
+def get_arquivos_novos(engine):
+    """Baixa arquivos novos da API do Aniita"""
+    data_ultimo_arquivo = data_ultimo_arquivo_baixado(engine)
+    datainicial = datetime.strftime(data_ultimo_arquivo + timedelta(seconds=1),
+                                    FORMATO_DATA_ANIITA)
+    datafinal = datetime.strftime(data_ultimo_arquivo + timedelta(days = 1),
+                                  FORMATO_DATA_ANIITA)
+    print(datainicial, datafinal)
+    r = requests.get(URL_ANIITA_LISTA, params={'dtInicial': datainicial,
+                                             'dtFinal': datafinal})
+    print(r.url)
+    print(r.text)
+    if r.status_code == 200:
+        lista_arquivos = r.json()
+        for item in lista_arquivos:
+            filename = item['nomeArquivo']
+            r = requests.get(URL_ANIITA_DOWNLOAD, params={'nome': filename})
+            print(r.url)
+            destino = os.path.join(mercante.MERCANTE_DIR, filename)
+            print('Gerando arquivo %s' % destino)
+            if r.status_code == 200:
+                with open(destino, 'wb') as out:
+                    out.write(r.content)
+                # Grava em tabela arquivos baixados
+                ind_partedata = filename.rfind('_', ) + 1
+                partedata = filename[ind_partedata:-4]
+                print(partedata)
+                try:
+                    data = datetime.strptime(partedata, FORMATO_DATA_ARQUIVO)
+                    grava_arquivo_baixado(engine, filename, data)
+                except ValueError as err:
+                    print(err)
 
 
 def processa_classes(engine, lista_arquivos):
@@ -77,6 +120,7 @@ def xml_para_mercante(engine, lote=100):
         [f for f in os.listdir(mercante.MERCANTE_DIR)
          if os.path.isfile(os.path.join(mercante.MERCANTE_DIR, f))]
     # print(lista_arquivos)
+    lista_arquivos = sorted(lista_arquivos)
     lista_arquivos = lista_arquivos[:lote]
     t0 = time.time()
     count_objetos, lista_erros = processa_classes(engine, lista_arquivos)
@@ -87,7 +131,7 @@ def xml_para_mercante(engine, lote=100):
     logger.info(str(count_objetos.most_common()))
     t0 = time.time()
     count_objetos_lista, lista_erros_lista = processa_classes_em_lista(engine,
-                                                              lista_arquivos)
+                                                                       lista_arquivos)
     t = time.time()
     logger.info('%d arquivos processados com %d lista de objetos em %0.2f s' %
                 (len(lista_arquivos), sum(count_objetos_lista.values()), t - t0)
@@ -97,6 +141,7 @@ def xml_para_mercante(engine, lote=100):
     logger.info('%d Arquivos com erro sendo copiados para diretório erro ' %
                 len(arquivoscomerro)
                 )
+    # Tira arquivos processados do path
     for arquivo in arquivoscomerro:
         os.rename(os.path.join(mercante.MERCANTE_DIR, arquivo),
                   os.path.join(mercante.MERCANTE_DIR, 'erros', arquivo))
@@ -105,6 +150,7 @@ def xml_para_mercante(engine, lote=100):
     logger.info('%d Arquivos SEM erro sendo copiados para diretório processados ' %
                 len(lista_arquivos_semerro)
                 )
+    # Tira arquivos com erro do path
     for arquivo in lista_arquivos_semerro:
         os.rename(os.path.join(mercante.MERCANTE_DIR, arquivo),
                   os.path.join(mercante.MERCANTE_DIR, 'processados', arquivo))
@@ -113,6 +159,7 @@ def xml_para_mercante(engine, lote=100):
 if __name__ == '__main__':
     os.environ['DEBUG'] = '1'
     logger.setLevel(logging.DEBUG)
-    #engine = sqlalchemy.create_engine('mysql+pymysql://ivan@localhost:3306/mercante')
-    engine = Staging.sql
+    # engine = sqlalchemy.create_engine('mysql+pymysql://ivan@localhost:3306/mercante')
+    # engine = Staging.sql
+    engine = sqlalchemy.create_engine('sqlite:///teste.db')
     xml_para_mercante(engine)
